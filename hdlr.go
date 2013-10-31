@@ -9,42 +9,42 @@ package jsondb
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"log"
 	"net"
+	"time"
 )
 
 func handleConn(conn net.Conn, ds *DataStore) {
 	log.Printf("%v connected\n", conn.RemoteAddr())
-	dec := json.NewDecoder(conn)
+	dec, enc := json.NewDecoder(conn), json.NewEncoder(conn)
 	for {
-		var r Request
-		if err := dec.Decode(&r); err == io.EOF {
+		var req Request
+		if err := dec.Decode(&req); err == io.EOF {
 			break
 		} else if err != nil {
 			conn.Close()
 			return
+		} else {
+			conn.SetDeadline(time.Now().Add(time.Duration(5) * time.Minute))
 		}
-		switch r.Cmd {
+		switch req.Cmd {
+		case "exp":
+			enc.Encode(ds.exp(&req))
+		case "ttl":
+			enc.Encode(ds.ttl(&req))
 		case "has":
-			fmt.Fprintf(conn, "%s\r\n", ds.has(&r).EncodeResp())
-			break
+			enc.Encode(ds.has(&req))
 		case "add":
-			fmt.Fprintf(conn, "%s\r\n", ds.add(&r).EncodeResp())
-			break
+			enc.Encode(ds.add(&req))
 		case "set":
-			fmt.Fprintf(conn, "%s\r\n", ds.set(&r).EncodeResp())
-			break
+			enc.Encode(ds.set(&req))
 		case "get":
-			fmt.Fprintf(conn, "%s\r\n", ds.get(&r).EncodeResp())
-			break
+			enc.Encode(ds.get(&req))
 		case "del":
-			fmt.Fprintf(conn, "%s\r\n", ds.del(&r).EncodeResp())
-			break
+			enc.Encode(ds.del(&req))
 		default:
-			fmt.Fprintf(conn, "%s\r\n", ds.err(&r).EncodeResp())
-			break
+			enc.Encode(ds.err(&req))
 		}
 	}
 }

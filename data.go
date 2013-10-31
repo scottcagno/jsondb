@@ -8,11 +8,19 @@
 package jsondb
 
 import (
+	"reflect"
 	"sync"
 )
 
+type Request struct {
+	Cmd string      `json:"cmd"`
+	Key string      `json:"key"`
+	Val interface{} `json:"val"`
+}
+
 type DataStore struct {
 	ds map[string]interface{}
+	gc *GC
 	sync.Mutex
 }
 
@@ -20,62 +28,76 @@ func InitDataStore() *DataStore {
 	self := &DataStore{
 		ds: make(map[string]interface{}),
 	}
+	self.gc = InitGC(self)
+	go self.gc.Run()
 	return self
 }
 
-func (self *DataStore) has(r *Request) Response {
+func (self *DataStore) exp(r *Request) interface{} {
+	var ret int64 = -1
+	if reflect.TypeOf(r.Val).Kind() == reflect.Float64 {
+		ret = self.gc.exp(r.Key, int64(r.Val.(float64)))
+	}
+	return ret
+}
+
+func (self *DataStore) ttl(r *Request) interface{} {
+	return self.gc.ttl(r.Key)
+}
+
+func (self *DataStore) has(r *Request) interface{} {
 	self.Lock()
 	if _, ok := self.ds[r.Key]; ok {
 		self.Unlock()
-		return Response{"code": 1, "val": "key found"}
+		return 1
 	}
 	self.Unlock()
-	return Response{"code": -1, "val": "key not found"}
+	return -1
 }
 
-func (self *DataStore) add(r *Request) Response {
+func (self *DataStore) add(r *Request) interface{} {
 	self.Lock()
 	if _, ok := self.ds[r.Key]; !ok {
 		self.ds[r.Key] = r.Val
 		self.Unlock()
-		return Response{"code": 1, "val": "add ok"}
+		return 1
 	}
 	self.Unlock()
-	return Response{"code": -1, "val": "add err"}
+	return -1
 }
 
-func (self *DataStore) set(r *Request) Response {
+func (self *DataStore) set(r *Request) interface{} {
 	self.Lock()
 	self.ds[r.Key] = r.Val
 	if _, ok := self.ds[r.Key]; ok {
 		self.Unlock()
-		return Response{"code": 1, "val": "set ok"}
+		return 1
 	}
 	self.Unlock()
-	return Response{"code": -1, "val": "set err"}
+	return -1
 }
 
-func (self *DataStore) get(r *Request) Response {
+func (self *DataStore) get(r *Request) interface{} {
 	self.Lock()
 	if v, ok := self.ds[r.Key]; ok {
 		self.Unlock()
-		return Response{"code": 1, "val": v}
+		return v
 	}
 	self.Unlock()
-	return Response{"code": -1, "val": "get err"}
+	return -1
 }
 
-func (self *DataStore) del(r *Request) Response {
+func (self *DataStore) del(r *Request) interface{} {
 	self.Lock()
 	delete(self.ds, r.Key)
 	if _, ok := self.ds[r.Key]; !ok {
 		self.Unlock()
-		return Response{"code": 1, "val": "del ok"}
+		return 1
 	}
 	self.Unlock()
-	return Response{"code": -1, "val": "del err"}
+	return -1
 }
 
-func (self *DataStore) err(r *Request) Response {
-	return Response{"code": -1, "val": "unknown error"}
+func (self *DataStore) err(r *Request) interface{} {
+	return -1
 }
